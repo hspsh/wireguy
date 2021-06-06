@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2>Witaj w systemie obecności</h2>
+
+<p>
+    <span style="font-size: 3rem">Obecnie w HS znajduje się {{ headcount }} {{ {0:'osób', 1:'osoba', 2:'osoby', 3:'osoby', 4:'osoby'}[headcount]|default('osób') }} </span>    
+</p>
+<p>
+    {% if current_user.is_anonymous %}
+    <a href="/login">Zaloguj się</a> aby zająć urządzenie należące do ciebie. Powinno pojawić na liście za mniej więcej 15 minut po twoim przyjściu
+    {% endif %}
+</p>
+
+<h3>API</h3>
+<p>
+    Dostępne jest proste API udostępniające aktualne dane w JSON'nie
+    <br><kbd>{{ base_url }}/api/now</kbd>
+</p>
+<p>
+    Można spytać o dowolny okres wstecz
+    <br><kbd>{{ base_url }}/api/now?days=3&hours=2&minutes=13</kbd>
+</p>
+
+{% endblock %}
