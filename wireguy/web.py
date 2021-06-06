@@ -22,9 +22,9 @@ from flask_login import (
 )
 from authlib.integrations.flask_client import OAuth
 
-from whois import settings
-from whois.database import db, Device, User
-from whois.helpers import (
+from wireguy import settings
+from wireguy.database import db, Device, User
+from wireguy.helpers import (
     owners_from_devices,
     filter_hidden,
     unclaimed_devices,
@@ -37,7 +37,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.config.from_object("whois.settings")
+app.config.from_object("wireguy.settings")
 login_manager = LoginManager()
 login_manager.init_app(app)
 

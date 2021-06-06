@@ -2,7 +2,7 @@ import logging
 from functools import wraps
 
 from flask import request, abort
-from whois.settings import ip_mask
+from wireguy.settings import ip_mask
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
