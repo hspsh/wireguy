@@ -1,4 +1,3 @@
-__version__ = "1.3.0"
 import json
 import logging
 import os
@@ -14,7 +13,6 @@ from flask import (
     jsonify,
     abort,
 )
-from flask_cors import CORS
 from flask_login import (
     LoginManager,
     login_required,
@@ -34,7 +32,6 @@ from whois.helpers import (
     ip_range,
     in_space_required,
 )
-from whois.mikrotik import parse_mikrotik_data
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -48,20 +45,15 @@ if settings.oidc_enabled:
     oauth = OAuth(app)
     oauth.register(
         "sso",
-        server_metadata_url="http://sso.hsp.sh/auth/realms/hsp/.well-known/openid-configuration",
-        client_kwargs={"scope": "openid profile email"},
+        server_metadata_url=app.config.SSO_OPENID_CONFIG_URL,
+        client_kwargs={"scope": app.config.SSO_OPENID_SCOPE},
     )
 
-
-cors = CORS(app, resources={r"/api/*": {"origins": "*"}})
-
 common_vars_tpl = {
-    "version": __version__,
-    "site_name": settings.name,
-    "base_url": settings.base_url,
+    "app": app.config.get_namespace('APP_')
 }
 
-
+#TODO(critbit) might need to change auth handling to flask JWT or something
 @login_manager.user_loader
 def load_user(user_id):
     try:
@@ -73,7 +65,7 @@ def load_user(user_id):
 
 @app.before_request
 def before_request():
-    app.logger.info("connecting to db")
+    app.logger.debug("connecting to db")
     db.connect()
 
     if request.headers.getlist("X-Forwarded-For"):
@@ -86,6 +78,7 @@ def before_request():
     else:
         ip_addr = request.remote_addr
 
+    #TODO(critbit): remove if local connection not needed, for sure it will not be need
     if not ip_range(settings.ip_mask, ip_addr):
         app.logger.error("%s", request.headers)
         flash("Outside local network, some functions forbidden!", "outside-warning")
@@ -93,7 +86,7 @@ def before_request():
 
 @app.teardown_appcontext
 def after_request(error):
-    app.logger.info("closing db")
+    app.logger.debug("closing db")
     db.close()
     if error:
         app.logger.error(error)
@@ -136,97 +129,8 @@ def devices():
         )
 
 
-@app.route("/api/now", methods=["GET"])
-def now_at_space():
-    """
-    Send list of people currently in HS as JSON, only registred people,
-    used by other services in HS,
-    requests should be from hsp.sh domain or from HSWAN
-    """
-    period = {**settings.recent_time}
-
-    for key in ["days", "hours", "minutes"]:
-        if key in request.args:
-            period[key] = request.args.get(key, default=0, type=int)
-
-    devices = filter_hidden(Device.get_recent(**period))
-    users = filter_hidden(owners_from_devices(devices))
-
-    data = {
-        "users": sorted(map(str, filter_anon_names(users))),
-        "headcount": len(users),
-        "unknown_devices": len(unclaimed_devices(devices)),
-    }
-
-    app.logger.info("sending request for /api/now {}".format(data))
-
-    return jsonify(data)
-
-
-@app.route("/api/last_seen", methods=["POST"])
-def last_seen_devices():
-    """
-    Post last seen devices to database
-    :return: status code
-    """
-    if request.headers.getlist("X-Forwarded-For"):
-        ip_addr = request.headers.getlist("X-Forwarded-For")[0]
-        logger.info(
-            "forward from %s to %s",
-            request.remote_addr,
-            request.headers.getlist("X-Forwarded-For")[0],
-        )
-    else:
-        ip_addr = request.remote_addr
-
-    if any(ip_range(whitelist_addr, ip_addr) for whitelist_addr in settings.whitelist):
-        app.logger.info("request from whitelist: {}".format(ip_addr))
-
-        if request.headers.get("User-Agent") == "Mikrotik/6.x Fetch":
-            app.logger.info("got data from mikrotik")
-            try:
-                data = json.loads(request.values.get("data", []))
-            except Exception as exc:
-                app.logger.error("malformed request")
-                return abort(400)
-            parsed_data = parse_mikrotik_data(datetime.now(), data)
-        else:
-            app.logger.warning("bad request \n{}".format(request.headers))
-            return abort(400)
-
-        app.logger.info("parsed data, got {} devices".format(len(parsed_data)))
-
-        with db.atomic():
-            for dev in parsed_data:
-                Device.update_or_create(**dev)
-
-        app.logger.info("updated last seen devices")
-
-        return "OK", 200
-    else:
-        app.logger.warning("request from outside whitelist: {}".format(ip_addr))
-        return abort(403)
-
-
-def set_device_flags(device, new_flags):
-    if device.owner is not None and device.owner.get_id() != current_user.get_id():
-        app.logger.error("no permission for {}".format(current_user.username))
-        flash("No permission!".format(device.mac_address), "error")
-        return
-    device.is_hidden = "hidden" in new_flags
-    device.is_esp = "esp" in new_flags
-    device.is_infrastructure = "infrastructure" in new_flags
-    print(device.flags)
-    device.save()
-    app.logger.info(
-        "{} changed {} flags to {}".format(
-            current_user.username, device.mac_address, device.flags
-        )
-    )
-    flash("Flags set".format(device.mac_address), "info")
-
-
-@app.route("/device/<mac_address>", methods=["GET", "POST"])
+#TODO(critbit): example enpoint, how to handle details or sth, idc
+@app.route("/device/<mac_address>", methods=["GET"])
 @login_required
 @in_space_required()
 def device_view(mac_address):
@@ -238,42 +142,9 @@ def device_view(mac_address):
         app.logger.error("{}".format(exc))
         return abort(404)
 
-    if request.method == "POST":
-        if request.values.get("action") == "claim":
-            claim_device(device)
-
-        elif request.values.get("action") == "unclaim":
-            unclaim_device(device)
-            set_device_flags(device, [])
-
-        elif request.values.get("flags"):
-            set_device_flags(device, request.form.getlist("flags"))
-
     return render_template("device.html", device=device, **common_vars_tpl)
 
-
-def claim_device(device):
-    if device.owner is not None:
-        app.logger.error("no permission for {}".format(current_user.username))
-        flash("No permission!".format(device.mac_address), "error")
-        return
-    device.owner = current_user.get_id()
-    device.save()
-    app.logger.info("{} claim {}".format(current_user.username, device.mac_address))
-    flash("Claimed {}!".format(device.mac_address), "success")
-
-
-def unclaim_device(device):
-    if device.owner is not None and device.owner.get_id() != current_user.get_id():
-        app.logger.error("no permission for {}".format(current_user.username))
-        flash("No permission!".format(device.mac_address), "error")
-        return
-    device.owner = None
-    device.save()
-    app.logger.info("{} unclaim {}".format(current_user.username, device.mac_address))
-    flash("Unclaimed {}!".format(device.mac_address), "info")
-
-
+#TODO(critbit): I guess we don't need it
 @app.route("/register", methods=["GET", "POST"])
 @in_space_required()
 def register():
@@ -308,7 +179,7 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
-    """Login using naive db or LDAP (work on it @priest)"""
+    """Login using query to DB or SSO"""
     if current_user.is_authenticated:
         app.logger.error("Shouldn't login when auth")
         flash("You are already logged in", "error")
@@ -355,7 +226,7 @@ def callback():
             user = User.get(User.username == user_info["preferred_username"])
         except User.DoesNotExist:
             user = None
-            app.logger.error("no user: {}".format(user_info["preferred_username"]))
+            app.logger.warning("no user: {}".format(user_info["preferred_username"]))
 
         if user is not None:
             login_user(user)

@@ -7,7 +7,7 @@ from whois.settings import DB_NAME
 
 db = pw.SqliteDatabase(DB_NAME)
 
-
+#TODO(critbit): propably remove
 class User(pw.Model):
     id = pw.PrimaryKeyField()
     username = pw.CharField(unique=True)
@@ -73,7 +73,7 @@ class User(pw.Model):
     def auth(self, password):
         return check_password_hash(self.password, password)
 
-
+#TODO(critbit) you could rewrite this, ad owner_id as uuid, to match this in keycloak
 class Device(pw.Model):
     mac_address = pw.FixedCharField(primary_key=True, unique=True, max_length=17)
     hostname = pw.CharField(null=True)
