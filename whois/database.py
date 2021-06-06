@@ -3,8 +3,9 @@ from datetime import datetime, timedelta
 
 import peewee as pw
 from werkzeug.security import check_password_hash, generate_password_hash
+from whois.settings import DB_NAME
 
-db = pw.SqliteDatabase(os.environ.get("DB_PATH", "whoisdevices.db"))
+db = pw.SqliteDatabase(DB_NAME)
 
 
 class User(pw.Model):
