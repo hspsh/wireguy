@@ -1,14 +1,13 @@
 import logging
 from functools import wraps
-from urllib.parse import urlparse, urljoin
 
 from flask import request, abort
-from whois.settings import ip_mask
+from wireguy.settings import ip_mask
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
+#TODO(critbit): these shouldn't be needed after removing whois specific parts
 def owners_from_devices(devices):
     return set(filter(None, map(lambda d: d.owner, devices)))
 
@@ -23,12 +22,6 @@ def filter_anon_names(users):
 
 def unclaimed_devices(devices):
     return list(filter(lambda d: d.owner is None, devices))
-
-
-def is_safe_url(target):
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ("http", "https") and ref_url.netloc == test_url.netloc
 
 
 def ip_range(mask, address):
@@ -48,7 +41,7 @@ def ip_range(mask, address):
             return False
     return True
 
-
+#TODO(critbit): note this as example how to add your own decorators
 def in_space_required():
     def decorator(f):
         @wraps(f)
