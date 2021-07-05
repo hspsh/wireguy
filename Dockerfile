@@ -16,4 +16,4 @@ VOLUME ["/data"]
 
 USER nobody
 EXPOSE 8000
-CMD ["gunicorn", "whois.web:app", "-b 0.0.0.0:8000"]
+CMD ["gunicorn", "wireguy.web:app", "-b 0.0.0.0:8000"]
